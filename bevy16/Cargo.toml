@@ -14,6 +14,10 @@ edition = "2024"
 #
 # ─────────────────────────────────────────────────────────────────────────────
 
+[[bin]]
+name = "avian_vs_rapier"
+path = "../src/main.rs"
+
 [dependencies]
 bevy = { version = "0.16" }
 
@@ -36,7 +40,7 @@ getrandom = { version = "0.3", features = ["wasm_js"] }
 
 [features]
 # legacy_state_scoped is required for Bevy 0.16 — it activates the StateScoped shim.
-default = ["dev_native", "legacy_state_scoped", "parallel", "simd"]
+default = ["legacy_state_scoped", "parallel", "simd"]
 
 # Enables the StateScoped compat shim in backend.rs.
 # Bevy 0.16 used StateScoped instead of DespawnOnExit.

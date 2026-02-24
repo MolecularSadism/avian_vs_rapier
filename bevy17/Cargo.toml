@@ -14,6 +14,10 @@ edition = "2024"
 #
 # ─────────────────────────────────────────────────────────────────────────────
 
+[[bin]]
+name = "avian_vs_rapier"
+path = "../src/main.rs"
+
 [dependencies]
 bevy = { version = "0.17" }
 
@@ -35,7 +39,7 @@ tracing = { version = "0.1", features = [
 getrandom = { version = "0.3", features = ["wasm_js"] }
 
 [features]
-default = ["dev_native", "parallel", "simd"]
+default = ["parallel", "simd"]
 
 # Enables the StateScoped compat shim in backend.rs.
 # Only needed for Bevy 0.16 (which used StateScoped instead of DespawnOnExit).
