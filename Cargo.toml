@@ -36,7 +36,7 @@ tracing = { version = "0.1", features = [
 getrandom = { version = "0.3", features = ["wasm_js"] }
 
 [features]
-default = ["parallel", "simd"]
+default = ["simd"]
 
 # Enables the StateScoped compat shim in backend.rs.
 # Only needed for Bevy 0.16 (which used StateScoped instead of DespawnOnExit).

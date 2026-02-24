@@ -101,6 +101,7 @@ jobs:
       # Use a consistent target directory regardless of which manifest is used.
       CARGO_TARGET_DIR: target
     strategy:
+      fail-fast: false
       matrix:
         include:
           # ── Bevy 0.18 ───────────────────────────────────────────────────────
@@ -108,7 +109,7 @@ jobs:
           - bevy_version: bevy18
             bevy_label: "Bevy 0.18"
             manifest_path: Cargo.toml
-            features: parallel,simd
+            features: simd
             platform: web
             targets: wasm32-unknown-unknown
             package_ext: .zip
@@ -140,7 +141,7 @@ jobs:
             manifest_path: Cargo.toml
             features: parallel,simd
             platform: macos
-            targets: x86_64-apple-darwin aarch64-apple-darwin
+            targets: x86_64-apple-darwin,aarch64-apple-darwin
             app_suffix: .app/Contents/MacOS
             package_ext: .dmg
             runner: macos-latest
@@ -171,7 +172,7 @@ jobs:
             manifest_path: bevy17/Cargo.toml
             features: parallel,simd
             platform: macos
-            targets: x86_64-apple-darwin aarch64-apple-darwin
+            targets: x86_64-apple-darwin,aarch64-apple-darwin
             app_suffix: .app/Contents/MacOS
             package_ext: .dmg
             runner: macos-latest
@@ -202,7 +203,7 @@ jobs:
             manifest_path: bevy16/Cargo.toml
             features: parallel,simd
             platform: macos
-            targets: x86_64-apple-darwin aarch64-apple-darwin
+            targets: x86_64-apple-darwin,aarch64-apple-darwin
             app_suffix: .app/Contents/MacOS
             package_ext: .dmg
             runner: macos-latest
@@ -263,8 +264,13 @@ jobs:
       - name: Install Rust toolchain
         if: ${{ env.is_enabled == 'true' }}
         uses: dtolnay/rust-toolchain@nightly
-        with:
-          targets: ${{ matrix.targets }}
+
+      - name: Install Rust targets
+        if: ${{ env.is_enabled == 'true' }}
+        run: |
+          for target in $(echo '${{ matrix.targets }}' | tr ',' ' '); do
+            rustup target add "${target}"
+          done
 
       - name: Restore Rust cache
         if: ${{ env.is_enabled == 'true' && env.use_github_cache == 'true' }}
@@ -300,7 +306,7 @@ jobs:
       - name: Build and add binaries to app (non-Web)
         if: ${{ env.is_enabled == 'true' && matrix.platform != 'web' }}
         run: |
-          for target in ${{ matrix.targets }}; do
+          for target in $(echo '${{ matrix.targets }}' | tr ',' ' '); do
             bevy build --locked --release --manifest-path='${{ matrix.manifest_path }}' --target="${target}" --features='${{ matrix.features }}'
             mv target/"${target}"/release/'${{ env.cargo_build_binary_name }}${{ matrix.binary_ext }}' tmp/binary/"${target}"'${{ matrix.binary_ext }}'
           done
@@ -391,7 +397,7 @@ jobs:
       - forward-env
       - get-version
       - build
-    if: ${{ inputs.upload_to_itch && needs.forward-env.outputs.itch_page != '' }}
+    if: ${{ !cancelled() && inputs.upload_to_itch && needs.forward-env.outputs.itch_page != '' }}
 
     steps:
       - name: Download all packages
