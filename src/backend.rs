@@ -227,7 +227,12 @@ pub fn spawn_ball(
     radius: f32,
     assets: &BallAssets,
 ) {
-    let BallAssets { mesh2d, mat2d, mesh3d, mat3d } = assets;
+    let BallAssets {
+        mesh2d,
+        mat2d,
+        mesh3d,
+        mat3d,
+    } = assets;
     match mode {
         PhysicsMode::Avian2d => {
             commands.spawn((
