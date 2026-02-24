@@ -40,6 +40,9 @@ pub fn plugin(app: &mut App) {
 
 fn spawn_balls(
     mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut color_materials: ResMut<Assets<ColorMaterial>>,
     time: Res<Time>,
     mut timer: ResMut<SpawnTimer>,
     mut ball_count: ResMut<BallCount>,
@@ -55,7 +58,16 @@ fn spawn_balls(
         let x = rng.random_range(SPAWN_X_MIN..=SPAWN_X_MAX);
         let position = Vec3::new(x, SPAWN_Y, 0.0);
 
-        backend::spawn_ball(&mut commands, mode, position, BALL_RADIUS, ball_color);
+        backend::spawn_ball(
+            &mut commands,
+            &mut meshes,
+            &mut materials,
+            &mut color_materials,
+            mode,
+            position,
+            BALL_RADIUS,
+            ball_color,
+        );
         ball_count.0 += 1;
     }
 }

@@ -11,7 +11,6 @@
 //! - Avian `RigidBody::Static` vs Rapier `RigidBody::Fixed`.
 
 use bevy::prelude::*;
-use bevy::render::mesh::Mesh;
 
 /// Pixels per meter — passed to every physics plugin so unit conversion matches.
 pub const LENGTH_UNIT: f32 = 10.0;
@@ -170,27 +169,23 @@ pub fn spawn_ball(
     commands: &mut Commands,
     meshes: &mut Assets<Mesh>,
     materials: &mut Assets<StandardMaterial>,
+    color_materials: &mut Assets<ColorMaterial>,
     mode: PhysicsMode,
     position: Vec3,
     radius: f32,
     color: Color,
 ) {
-    let sprite = (
-        Sprite {
-            color,
-            custom_size: Some(Vec2::splat(radius * 2.0)),
-            ..default()
-        },
-        Transform::from_translation(position),
-    );
-
     match mode {
         PhysicsMode::Avian2d => {
+            let mesh = meshes.add(Circle::new(radius));
+            let mat = color_materials.add(ColorMaterial::from_color(color));
             commands.spawn((
                 Name::new("Ball"),
                 DespawnOnExit(mode),
                 crate::spawner::Ball,
-                sprite,
+                Mesh2d(mesh),
+                MeshMaterial2d(mat),
+                Transform::from_translation(position),
                 avian2d::prelude::RigidBody::Dynamic,
                 avian2d::prelude::Collider::circle(radius),
             ));
@@ -214,11 +209,15 @@ pub fn spawn_ball(
             ));
         }
         PhysicsMode::Rapier2d => {
+            let mesh = meshes.add(Circle::new(radius));
+            let mat = color_materials.add(ColorMaterial::from_color(color));
             commands.spawn((
                 Name::new("Ball"),
                 DespawnOnExit(mode),
                 crate::spawner::Ball,
-                sprite,
+                Mesh2d(mesh),
+                MeshMaterial2d(mat),
+                Transform::from_translation(position),
                 bevy_rapier2d::prelude::RigidBody::Dynamic,
                 bevy_rapier2d::prelude::Collider::ball(radius),
             ));

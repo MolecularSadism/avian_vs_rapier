@@ -9,12 +9,19 @@ const WIDTH: f32 = 1920.0;
 const HEIGHT: f32 = 1080.0;
 const WALL_THICKNESS: f32 = 10.0;
 
-pub fn spawn_walls(commands: &mut Commands, mode: PhysicsMode) {
+pub fn spawn_walls(
+    commands: &mut Commands,
+    meshes: &mut Assets<Mesh>,
+    materials: &mut Assets<StandardMaterial>,
+    mode: PhysicsMode,
+) {
     let wall_color = Color::srgb(0.4, 0.4, 0.4);
 
     // Floor — full width, at the very bottom edge
     backend::spawn_wall(
         commands,
+        meshes,
+        materials,
         mode,
         Vec3::new(0.0, -HEIGHT / 2.0 + WALL_THICKNESS / 2.0, 0.0),
         WIDTH,
@@ -25,6 +32,8 @@ pub fn spawn_walls(commands: &mut Commands, mode: PhysicsMode) {
     // Left wall — full height, at the very left edge
     backend::spawn_wall(
         commands,
+        meshes,
+        materials,
         mode,
         Vec3::new(-WIDTH / 2.0 + WALL_THICKNESS / 2.0, 0.0, 0.0),
         WALL_THICKNESS,
@@ -35,6 +44,8 @@ pub fn spawn_walls(commands: &mut Commands, mode: PhysicsMode) {
     // Right wall — full height, at the very right edge
     backend::spawn_wall(
         commands,
+        meshes,
+        materials,
         mode,
         Vec3::new(WIDTH / 2.0 - WALL_THICKNESS / 2.0, 0.0, 0.0),
         WALL_THICKNESS,

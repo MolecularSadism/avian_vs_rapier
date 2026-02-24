@@ -246,8 +246,13 @@ fn enter_3d_camera(
     ));
 }
 
-fn spawn_walls_system(mut commands: Commands, state: Res<State<PhysicsMode>>) {
-    walls::spawn_walls(&mut commands, *state.get());
+fn spawn_walls_system(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    state: Res<State<PhysicsMode>>,
+) {
+    walls::spawn_walls(&mut commands, &mut meshes, &mut materials, *state.get());
 }
 
 fn reset_ball_count(mut ball_count: ResMut<BallCount>) {
