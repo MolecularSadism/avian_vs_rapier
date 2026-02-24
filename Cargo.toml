@@ -1,0 +1,94 @@
+[package]
+name = "avian_vs_rapier"
+authors = ["Florian Mulks <fmulks@gmail.com>"]
+version = "0.1.0"
+edition = "2024"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# VERSION SWAP GUIDE
+# ──────────────────────────────────────────────────────────────────────────────
+# BEVY 0.18 (default):
+#   bevy = "0.18"  |  avian2d/3d = "0.5"  |  bevy_rapier2d/3d = git (see below)
+#
+# BEVY 0.17:
+#   bevy = "0.17"  |  avian2d/3d = "0.4"  |  bevy_rapier2d/3d = "0.32"
+#
+# BEVY 0.16:
+#   bevy = "0.16"  |  avian2d/3d = "0.3"  |  bevy_rapier2d/3d = "0.30"
+# ──────────────────────────────────────────────────────────────────────────────
+
+[dependencies]
+bevy = { version = "0.18", default-features = false, features = [
+    "bevy_asset",
+    "bevy_color",
+    "bevy_core_pipeline",
+    "bevy_dev_tools",
+    "bevy_pbr",
+    "bevy_state",
+    "bevy_render",
+    "bevy_sprite",
+    "bevy_text",
+    "bevy_ui",
+    "bevy_ui_render",
+    "bevy_winit",
+    "default_font",
+    "tonemapping_luts",
+    "zstd_rust",
+    "multi_threaded",
+    "wayland",
+    "x11",
+] }
+
+rand = "0.9"
+
+# Physics — all four crates compiled in, runtime-switchable
+avian2d = "0.5"
+avian3d = "0.5"
+
+# TODO: upgrade to bevy_rapier 0.33 once it is published for bevy 0.18
+bevy_rapier2d = { git = "https://github.com/Buncys/bevy_rapier", branch = "bevy-0.18.0" }
+bevy_rapier3d = { git = "https://github.com/Buncys/bevy_rapier", branch = "bevy-0.18.0" }
+
+tracing = { version = "0.1", features = [
+    "max_level_debug",
+    "release_max_level_warn",
+] }
+
+[features]
+default = ["dev_native"]
+
+# Dev features
+dev = [
+    "bevy/dynamic_linking",
+    "bevy/bevy_ui_debug",
+    "bevy/track_location",
+]
+dev_native = [
+    "dev",
+    "bevy/file_watcher",
+    "bevy/embedded_watcher",
+]
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(bevy_lint)"] }
+
+[lints.clippy]
+too_many_arguments = "allow"
+type_complexity = "allow"
+nonstandard_macro_braces = "warn"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Performance profiles
+# ──────────────────────────────────────────────────────────────────────────────
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 3
+
+[profile.dev.package.wgpu-types]
+debug-assertions = false
+
+[profile.release]
+codegen-units = 1
+lto = "thin"
