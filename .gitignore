@@ -1,4 +1,14 @@
 # Rust builds
 /target
+*/target
+
 # This file contains environment-specific configuration like linker settings
 .cargo/config.toml
+
+# Ignore hidden configs
+.*/
+!/.github
+
+# Ignore all markdown files except the README
+/*.md
+!/README.md

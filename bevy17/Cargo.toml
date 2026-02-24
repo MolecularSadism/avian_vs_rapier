@@ -6,25 +6,24 @@ edition = "2024"
 
 # ── VERSION SWAP GUIDE ────────────────────────────────────────────────────────
 #
-#   This file = Bevy 0.18 (default).
+#   This file = Bevy 0.17.
 #
-#   For other versions, use an alternate manifest:
-#     cargo run --manifest-path bevy17/Cargo.toml     # Bevy 0.17
-#     cargo run --manifest-path bevy16/Cargo.toml     # Bevy 0.16
+#   Default manifest (Bevy 0.18):  Cargo.toml
+#   This manifest  (Bevy 0.17):   bevy17/Cargo.toml
+#   Older manifest (Bevy 0.16):   bevy16/Cargo.toml
 #
 # ─────────────────────────────────────────────────────────────────────────────
 
 [dependencies]
-bevy = { version = "0.18"}
+bevy = { version = "0.17" }
 
 rand = "0.9"
 
-avian2d = "0.5"
-avian3d = "0.5"
+avian2d = "0.4"
+avian3d = "0.4"
 
-# TODO: upgrade to bevy_rapier 0.33 once published for bevy 0.18
-bevy_rapier2d = { git = "https://github.com/Buncys/bevy_rapier", branch = "bevy-0.18.0" }
-bevy_rapier3d = { git = "https://github.com/Buncys/bevy_rapier", branch = "bevy-0.18.0" }
+bevy_rapier2d = "0.32"
+bevy_rapier3d = "0.32"
 
 tracing = { version = "0.1", features = [
     "max_level_debug",

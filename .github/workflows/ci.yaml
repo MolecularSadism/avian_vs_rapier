@@ -1,0 +1,275 @@
+name: CI
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref || github.run_id }}
+  cancel-in-progress: true
+
+env:
+  # Reduce compile time and cache size.
+  RUSTFLAGS: -Dwarnings -Zshare-generics=y -Zthreads=0
+  RUSTDOCFLAGS: -Dwarnings -Zshare-generics=y -Zthreads=0
+  # Use the same Rust toolchain across jobs so they can share a cache.
+  toolchain: nightly-2025-12-11
+
+jobs:
+  # Gate: only run CI on manual dispatch or when commit message contains [ci].
+  gate:
+    name: CI Gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    outputs:
+      should_run: ${{ steps.check.outputs.should_run }}
+    steps:
+      - name: Check for [ci] tag or manual dispatch
+        id: check
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "Manual dispatch — running CI."
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          COMMIT_MSG="${{ github.event.head_commit.message || github.event.pull_request.title }}"
+          if echo "$COMMIT_MSG" | grep -qi '\[ci\]'; then
+            echo "Found [ci] tag — running CI."
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "No [ci] tag found and not a manual dispatch — skipping CI."
+          echo "should_run=false" >> "$GITHUB_OUTPUT"
+
+  # Check formatting (applies to all versions since they share source files).
+  format:
+    name: Format
+    needs: gate
+    if: needs.gate.outputs.should_run == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.toolchain }}
+          components: rustfmt
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+  # Check documentation (default / Bevy 0.18 only).
+  docs:
+    name: Docs
+    needs: gate
+    if: needs.gate.outputs.should_run == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.toolchain }}
+
+      - name: Restore Rust cache
+        id: cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: ci
+          save-if: false
+
+      - name: Install build dependencies
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: sudo apt-get update; sudo apt-get install --no-install-recommends libasound2-dev libudev-dev libwayland-dev librust-alsa-sys-dev
+
+      - name: Check documentation
+        run: cargo doc --locked --workspace --profile ci --no-default-features --features parallel,simd --document-private-items --no-deps
+
+  # Run Clippy lints (default / Bevy 0.18 only).
+  clippy-lints:
+    name: Clippy lints
+    needs: gate
+    if: needs.gate.outputs.should_run == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.toolchain }}
+          components: clippy
+
+      - name: Restore Rust cache
+        id: cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: ci
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Install build dependencies
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: sudo apt-get update; sudo apt-get install --no-install-recommends libasound2-dev libudev-dev libwayland-dev librust-alsa-sys-dev
+
+      - name: Run Clippy lints
+        run: cargo clippy --locked --workspace --all-targets --profile ci --no-default-features --features parallel,simd
+
+  # Run Bevy lints (default / Bevy 0.18 only).
+  bevy-lints:
+    name: Bevy lints
+    needs: gate
+    if: needs.gate.outputs.should_run == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up environment
+        run: echo "RUSTFLAGS=${RUSTFLAGS:+$RUSTFLAGS }-Zcodegen-backend=cranelift" >> "${GITHUB_ENV}"
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          components: rustc-codegen-cranelift-preview, rustc-dev, llvm-tools-preview
+          toolchain: ${{ env.toolchain }}
+
+      - name: Restore Rust cache
+        id: cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: bevy-lint-ci
+          save-if: false
+
+      - name: Install build dependencies
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: sudo apt-get update; sudo apt-get install --no-install-recommends libasound2-dev libudev-dev libwayland-dev librust-alsa-sys-dev
+
+      - name: Install Bevy Lint
+        run: cargo install --git https://github.com/TheBevyFlock/bevy_cli --rev 949b808e6bbf11be0f61b236fbbc4e35854698af --locked bevy_lint
+
+      - name: Run Bevy lints
+        run: bevy_lint --locked --workspace --all-targets --profile ci --no-default-features --features parallel,simd
+
+  # Run tests (default / Bevy 0.18 only).
+  tests:
+    name: Tests
+    needs: gate
+    if: needs.gate.outputs.should_run == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up environment
+        run: echo "RUSTFLAGS=${RUSTFLAGS:+$RUSTFLAGS }-Zcodegen-backend=cranelift" >> "${GITHUB_ENV}"
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          components: rustc-codegen-cranelift-preview
+          toolchain: ${{ env.toolchain }}
+
+      - name: Restore Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: test
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Install build dependencies
+        run: sudo apt-get update; sudo apt-get install --no-install-recommends libasound2-dev libudev-dev libwayland-dev librust-alsa-sys-dev
+
+      - name: Run tests
+        run: cargo test --locked --workspace --all-targets --profile ci --no-fail-fast
+
+  # Check that the web build compiles (default / Bevy 0.18 only).
+  check-web:
+    name: Check web
+    needs: gate
+    if: needs.gate.outputs.should_run == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.toolchain }}
+          targets: wasm32-unknown-unknown
+
+      - name: Restore Rust cache
+        id: cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: web-ci
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Install build dependencies
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: sudo apt-get update; sudo apt-get install --no-install-recommends libasound2-dev libudev-dev libwayland-dev librust-alsa-sys-dev
+
+      - name: Check web
+        run: cargo check --locked --profile ci --no-default-features --target wasm32-unknown-unknown
+        # This is required for getrandom support: https://docs.rs/getrandom/latest/getrandom/#webassembly-support
+        env:
+          RUSTFLAGS: '--cfg getrandom_backend="wasm_js"'
+
+  # Verify that the alternate Bevy version manifests compile (Bevy 0.16 and 0.17).
+  # Full lints are skipped — this is a quick compilation smoke-test only.
+  check-alt-versions:
+    name: Check ${{ matrix.bevy_label }}
+    needs: gate
+    if: needs.gate.outputs.should_run == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      matrix:
+        include:
+          - bevy_label: Bevy 0.17
+            manifest_path: bevy17/Cargo.toml
+            features: parallel,simd
+
+          - bevy_label: Bevy 0.16
+            manifest_path: bevy16/Cargo.toml
+            # legacy_state_scoped is required for Bevy 0.16.
+            features: legacy_state_scoped,parallel,simd
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.toolchain }}
+
+      - name: Restore Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: ci-alt-${{ matrix.bevy_label }}
+          save-if: false
+
+      - name: Install build dependencies
+        run: sudo apt-get update; sudo apt-get install --no-install-recommends libasound2-dev libudev-dev libwayland-dev librust-alsa-sys-dev
+
+      - name: Check (${{ matrix.bevy_label }})
+        run: |
+          cargo check \
+            --locked \
+            --manifest-path=${{ matrix.manifest_path }} \
+            --no-default-features \
+            --features=${{ matrix.features }}
