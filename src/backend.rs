@@ -23,7 +23,7 @@ use bevy::prelude::StateScoped as DespawnOnExit;
 pub const LENGTH_UNIT: f32 = 10.0;
 
 /// Gravitational acceleration in m/s².
-pub const GRAVITY: f32 = 9.81;
+pub const GRAVITY: f32 = 9.81 * LENGTH_UNIT;
 
 /// Z depth of the 3D pool (full extent). Balls spawn within ±POOL_DEPTH/2.
 /// Matches WIDTH in walls.rs (1920) so the pool floor is square.
@@ -107,6 +107,19 @@ fn set_rapier2d_gravity(mut rapier_config: Query<&mut bevy_rapier2d::plugin::Rap
 fn set_rapier3d_gravity(mut rapier_config: Query<&mut bevy_rapier3d::plugin::RapierConfiguration>) {
     rapier_config.single_mut().unwrap().gravity =
         bevy_rapier3d::math::Vect::new(0.0, -GRAVITY, 0.0);
+}
+
+// ── Shared ball assets ───────────────────────────────────────────────────────
+
+/// Pre-created mesh and material handles shared by every ball entity.
+/// Holding a single set of handles lets Bevy batch/instance all ball draw calls
+/// instead of issuing one draw call per unique asset.
+#[derive(Resource)]
+pub struct BallAssets {
+    pub mesh2d: Handle<Mesh>,
+    pub mat2d: Handle<ColorMaterial>,
+    pub mesh3d: Handle<Mesh>,
+    pub mat3d: Handle<StandardMaterial>,
 }
 
 // ── Spawn helpers ────────────────────────────────────────────────────────────
@@ -204,74 +217,61 @@ pub fn spawn_wall(
 
 /// Spawn a dynamic ball with the correct backend components.
 /// Tagged [`DespawnOnExit`] so it is automatically despawned on state exit.
+///
+/// `assets` holds pre-created, shared handles — all balls reference the same
+/// mesh and material assets, enabling GPU instancing/batching.
 pub fn spawn_ball(
     commands: &mut Commands,
-    meshes: &mut Assets<Mesh>,
-    materials: &mut Assets<StandardMaterial>,
-    color_materials: &mut Assets<ColorMaterial>,
     mode: PhysicsMode,
     position: Vec3,
     radius: f32,
-    color: Color,
+    assets: &BallAssets,
 ) {
+    let BallAssets { mesh2d, mat2d, mesh3d, mat3d } = assets;
     match mode {
         PhysicsMode::Avian2d => {
-            let mesh = meshes.add(Circle::new(radius));
-            let mat = color_materials.add(ColorMaterial::from_color(color));
             commands.spawn((
                 Name::new("Ball"),
                 DespawnOnExit(mode),
                 crate::spawner::Ball,
-                Mesh2d(mesh),
-                MeshMaterial2d(mat),
+                Mesh2d(mesh2d.clone()),
+                MeshMaterial2d(mat2d.clone()),
                 Transform::from_translation(position),
                 avian2d::prelude::RigidBody::Dynamic,
                 avian2d::prelude::Collider::circle(radius),
             ));
         }
         PhysicsMode::Avian3d => {
-            let mesh = meshes.add(Sphere::new(radius));
-            let mat = materials.add(StandardMaterial {
-                base_color: color,
-                ..default()
-            });
             commands.spawn((
                 Name::new("Ball"),
                 DespawnOnExit(mode),
                 crate::spawner::Ball,
-                Mesh3d(mesh),
-                MeshMaterial3d(mat),
+                Mesh3d(mesh3d.clone()),
+                MeshMaterial3d(mat3d.clone()),
                 Transform::from_translation(position),
                 avian3d::prelude::RigidBody::Dynamic,
                 avian3d::prelude::Collider::sphere(radius),
             ));
         }
         PhysicsMode::Rapier2d => {
-            let mesh = meshes.add(Circle::new(radius));
-            let mat = color_materials.add(ColorMaterial::from_color(color));
             commands.spawn((
                 Name::new("Ball"),
                 DespawnOnExit(mode),
                 crate::spawner::Ball,
-                Mesh2d(mesh),
-                MeshMaterial2d(mat),
+                Mesh2d(mesh2d.clone()),
+                MeshMaterial2d(mat2d.clone()),
                 Transform::from_translation(position),
                 bevy_rapier2d::prelude::RigidBody::Dynamic,
                 bevy_rapier2d::prelude::Collider::ball(radius),
             ));
         }
         PhysicsMode::Rapier3d => {
-            let mesh = meshes.add(Sphere::new(radius));
-            let mat = materials.add(StandardMaterial {
-                base_color: color,
-                ..default()
-            });
             commands.spawn((
                 Name::new("Ball"),
                 DespawnOnExit(mode),
                 crate::spawner::Ball,
-                Mesh3d(mesh),
-                MeshMaterial3d(mat),
+                Mesh3d(mesh3d.clone()),
+                MeshMaterial3d(mat3d.clone()),
                 Transform::from_translation(position),
                 bevy_rapier3d::prelude::RigidBody::Dynamic,
                 bevy_rapier3d::prelude::Collider::ball(radius),

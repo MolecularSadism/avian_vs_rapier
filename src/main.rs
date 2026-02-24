@@ -36,6 +36,7 @@ fn main() -> AppExit {
         .add_plugins(backend::plugin)
         .add_plugins(spawner::plugin)
         .init_resource::<PerfStats>()
+        .init_resource::<WarmupTimer>()
         .init_resource::<ClippedBallCount>()
         .add_systems(Startup, setup)
         // Per-mode OnEnter: camera, walls, ball-count reset, mode label update.
@@ -49,6 +50,7 @@ fn main() -> AppExit {
                 reset_clipped_ball_count,
                 reset_perf_stats,
                 update_mode_text,
+                pause_simulation,
             ),
         )
         .add_systems(
@@ -60,6 +62,7 @@ fn main() -> AppExit {
                 reset_clipped_ball_count,
                 reset_perf_stats,
                 update_mode_text,
+                pause_simulation,
             ),
         )
         .add_systems(
@@ -72,6 +75,7 @@ fn main() -> AppExit {
                 reset_clipped_ball_count,
                 reset_perf_stats,
                 update_mode_text,
+                pause_simulation,
             ),
         )
         .add_systems(
@@ -83,17 +87,18 @@ fn main() -> AppExit {
                 reset_clipped_ball_count,
                 reset_perf_stats,
                 update_mode_text,
+                pause_simulation,
             ),
         )
         .add_systems(
             Update,
             (
-                update_fps_display,
+                tick_warmup_timer,
+                update_fps_display.after(tick_warmup_timer),
                 update_ball_counter,
                 detect_clipped_balls,
                 toggle_pause,
                 handle_mode_switch,
-                tick_mode_switch_timer,
                 handle_balls_per_tick,
             ),
         )
@@ -250,28 +255,24 @@ struct TopLight;
 #[derive(Resource, Default)]
 struct ClippedBallCount(usize);
 
-/// Real-time buffer between requesting a mode switch and executing it, giving
-/// the framerate a chance to settle before the next simulation starts.
-const MODE_SWITCH_DELAY: Duration = Duration::from_millis(300);
-
-/// Inserted when a mode switch is requested. Counts down in real time so the
-/// framerate has a chance to settle before the next simulation starts.
-#[derive(Resource)]
-struct PendingModeSwitch {
-    mode: PhysicsMode,
-    timer: Timer,
-}
-
-/// Real-time delay after a mode starts before FPS milestones are recorded,
+/// Real-time delay after entering a mode before FPS milestones are recorded,
 /// so frame-0 spikes don't register.
-const PERF_WARMUP: Duration = Duration::from_millis(150);
+const PERF_WARMUP: Duration = Duration::from_millis(1000);
+
+/// Separate timer resource so state transitions are never blocked.
+/// Reset via `Changed<State<PhysicsMode>>` in `tick_warmup_timer`.
+#[derive(Resource)]
+struct WarmupTimer(Timer);
+
+impl Default for WarmupTimer {
+    fn default() -> Self {
+        Self(Timer::new(PERF_WARMUP, TimerMode::Once))
+    }
+}
 
 /// Milestone ball counts recorded when FPS first crosses below a threshold.
 #[derive(Resource, Default)]
 struct PerfStats {
-    /// Real time elapsed since this mode started. Milestones are ignored until
-    /// this exceeds `PERF_WARMUP`.
-    warmup_elapsed: Duration,
     /// Ball count when instantaneous FPS first dropped below 50.
     first_below_50: Option<usize>,
     /// Ball count when 1-sec average FPS first dropped below 50.
@@ -365,6 +366,10 @@ fn reset_perf_stats(mut stats: ResMut<PerfStats>) {
     *stats = PerfStats::default();
 }
 
+fn pause_simulation(mut vtime: ResMut<Time<Virtual>>) {
+    vtime.pause();
+}
+
 fn update_mode_text(state: Res<State<PhysicsMode>>, mut query: Query<&mut Text, With<ModeText>>) {
     for mut text in &mut query {
         **text = state.get().label().to_string();
@@ -394,22 +399,33 @@ fn update_ball_counter(
     }
 }
 
+/// Resets and ticks `WarmupTimer`. Detects state changes via `Changed<State>` so
+/// a single system covers all modes without 4× `OnEnter` registrations.
+fn tick_warmup_timer(
+    state: Res<State<PhysicsMode>>,
+    mut warmup: ResMut<WarmupTimer>,
+    time: Res<Time<Real>>,
+) {
+    if state.is_changed() {
+        warmup.0 = Timer::new(PERF_WARMUP, TimerMode::Once);
+    }
+    warmup.0.tick(time.delta());
+}
+
 fn update_fps_display(
     diagnostics: Res<DiagnosticsStore>,
     ball_count: Res<BallCount>,
     mut stats: ResMut<PerfStats>,
-    time: Res<Time<Real>>,
+    warmup: Res<WarmupTimer>,
     mut query: Query<&mut Text, With<FpsDisplayText>>,
 ) {
-    stats.warmup_elapsed += time.delta();
-
     let diag = diagnostics.get(&FrameTimeDiagnosticsPlugin::FPS);
     let fps = diag.and_then(|d| d.value()).unwrap_or(0.0);
     let fps_avg = diag.and_then(|d| d.average()).unwrap_or(0.0);
     let balls = ball_count.0;
 
-    // Record milestones on first crossing, but only after the warmup window.
-    if stats.warmup_elapsed >= PERF_WARMUP {
+    // Record milestones on first crossing, but only after the 300 ms warmup.
+    if warmup.0.elapsed() >= warmup.0.duration() {
         if fps < 50.0 && fps > 0.0 && stats.first_below_50.is_none() {
             stats.first_below_50 = Some(balls);
         }
@@ -490,20 +506,12 @@ fn handle_balls_per_tick(
 }
 
 /// Keys 1-4 jump to a specific mode; Enter cycles to the next one.
-/// On press: immediately pause the simulation and start a 300 ms real-time
-/// buffer. The actual state transition happens in `tick_mode_switch_timer`.
+/// The transition is immediate; `OnEnter` handles pausing and timer reset.
 fn handle_mode_switch(
     input: Res<ButtonInput<KeyCode>>,
     state: Res<State<PhysicsMode>>,
-    pending: Option<Res<PendingModeSwitch>>,
-    mut vtime: ResMut<Time<Virtual>>,
-    mut commands: Commands,
+    mut next_state: ResMut<NextState<PhysicsMode>>,
 ) {
-    // Don't queue another switch while one is already pending.
-    if pending.is_some() {
-        return;
-    }
-
     let new_mode = if input.just_pressed(KeyCode::Digit1) {
         Some(PhysicsMode::Avian2d)
     } else if input.just_pressed(KeyCode::Digit2) {
@@ -523,28 +531,5 @@ fn handle_mode_switch(
         return;
     }
 
-    // Pause first so the framerate settles, then buffer for 300 ms.
-    vtime.pause();
-    commands.insert_resource(PendingModeSwitch {
-        mode: new_mode,
-        timer: Timer::new(MODE_SWITCH_DELAY, TimerMode::Once),
-    });
-}
-
-/// Ticks the mode-switch buffer using real (wall-clock) time.
-/// Once the timer finishes, transitions to the queued state and removes itself.
-/// The simulation stays paused — the user must press Space to resume.
-fn tick_mode_switch_timer(
-    mut commands: Commands,
-    pending: Option<ResMut<PendingModeSwitch>>,
-    mut next_state: ResMut<NextState<PhysicsMode>>,
-    time: Res<Time<Real>>,
-) {
-    let Some(mut pending) = pending else { return };
-
-    pending.timer.tick(time.delta());
-    if pending.timer.just_finished() {
-        next_state.set(pending.mode);
-        commands.remove_resource::<PendingModeSwitch>();
-    }
+    next_state.set(new_mode);
 }
