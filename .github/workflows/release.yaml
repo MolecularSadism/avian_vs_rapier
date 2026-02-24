@@ -101,6 +101,7 @@ jobs:
       # Use a consistent target directory regardless of which manifest is used.
       CARGO_TARGET_DIR: target
     strategy:
+      fail-fast: false
       matrix:
         include:
           # ── Bevy 0.18 ───────────────────────────────────────────────────────
@@ -140,7 +141,7 @@ jobs:
             manifest_path: Cargo.toml
             features: parallel,simd
             platform: macos
-            targets: x86_64-apple-darwin aarch64-apple-darwin
+            targets: x86_64-apple-darwin,aarch64-apple-darwin
             app_suffix: .app/Contents/MacOS
             package_ext: .dmg
             runner: macos-latest
@@ -171,7 +172,7 @@ jobs:
             manifest_path: bevy17/Cargo.toml
             features: parallel,simd
             platform: macos
-            targets: x86_64-apple-darwin aarch64-apple-darwin
+            targets: x86_64-apple-darwin,aarch64-apple-darwin
             app_suffix: .app/Contents/MacOS
             package_ext: .dmg
             runner: macos-latest
@@ -202,7 +203,7 @@ jobs:
             manifest_path: bevy16/Cargo.toml
             features: parallel,simd
             platform: macos
-            targets: x86_64-apple-darwin aarch64-apple-darwin
+            targets: x86_64-apple-darwin,aarch64-apple-darwin
             app_suffix: .app/Contents/MacOS
             package_ext: .dmg
             runner: macos-latest
@@ -300,7 +301,7 @@ jobs:
       - name: Build and add binaries to app (non-Web)
         if: ${{ env.is_enabled == 'true' && matrix.platform != 'web' }}
         run: |
-          for target in ${{ matrix.targets }}; do
+          for target in $(echo '${{ matrix.targets }}' | tr ',' ' '); do
             bevy build --locked --release --manifest-path='${{ matrix.manifest_path }}' --target="${target}" --features='${{ matrix.features }}'
             mv target/"${target}"/release/'${{ env.cargo_build_binary_name }}${{ matrix.binary_ext }}' tmp/binary/"${target}"'${{ matrix.binary_ext }}'
           done
