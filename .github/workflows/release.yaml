@@ -362,14 +362,14 @@ jobs:
             ln -s /Applications .
             hdiutil create -fs HFS+ -volname '${{ env.app_package_name }}' -srcfolder . '${{ env.package }}'
           else
-            zip --recurse-paths '${{ env.package }}' '${{ env.app_package_name }}'
+            (cd '${{ env.app_package_name }}' && zip --recurse-paths '../${{ env.package }}' .)
           fi
 
       - name: Package app (Windows)
         if: ${{ env.is_enabled == 'true' && matrix.platform == 'windows' }}
         working-directory: tmp/app
         shell: pwsh
-        run: Compress-Archive -Path '${{ env.app_package_name }}' -DestinationPath '${{ env.package }}'
+        run: Compress-Archive -Path '${{ env.app_package_name }}\*' -DestinationPath '${{ env.package }}'
 
       - name: Upload package to workflow artifacts
         if: ${{ env.is_enabled == 'true' }}

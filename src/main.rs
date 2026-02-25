@@ -23,9 +23,9 @@ fn main() -> AppExit {
                 primary_window: Window {
                     title: "Avian vs Rapier".to_string(),
                     #[cfg(feature = "legacy_state_scoped")]
-                    resolution: WindowResolution::new(1920.0_f32, 1080.0_f32),
+                    resolution: WindowResolution::new(960.0_f32, 540.0_f32),
                     #[cfg(not(feature = "legacy_state_scoped"))]
-                    resolution: WindowResolution::new(1920_u32, 1080_u32),
+                    resolution: WindowResolution::new(960_u32, 540_u32),
                     ..default()
                 }
                 .into(),
@@ -110,125 +110,131 @@ fn main() -> AppExit {
 fn setup(mut commands: Commands, mut time: ResMut<Time<Virtual>>) {
     time.pause();
 
-    // HUD — FPS / perf stats (top-left)
-    commands.spawn((
-        Name::new("FPS Display"),
-        FpsDisplayText,
-        Text::new(""),
-        TextFont {
-            font_size: 20.0,
-            ..default()
-        },
-        TextColor(Color::WHITE),
-        Node {
-            position_type: PositionType::Absolute,
-            top: Val::Px(10.0),
-            left: Val::Px(10.0),
-            ..default()
-        },
-    ));
-
-    // HUD — ball counter (top-right)
-    commands.spawn((
-        Name::new("Ball Counter"),
-        BallCounterText,
-        Text::new("Balls: 0"),
-        TextFont {
-            font_size: 24.0,
-            ..default()
-        },
-        TextColor(Color::WHITE),
-        Node {
-            position_type: PositionType::Absolute,
-            top: Val::Px(10.0),
-            right: Val::Px(10.0),
-            ..default()
-        },
-    ));
-
-    // HUD — balls/tick (top-right, below ball counter)
-    commands.spawn((
-        Name::new("Balls Per Tick Display"),
-        BallsPerTickText,
-        Text::new("Balls/tick: 1"),
-        TextFont {
-            font_size: 24.0,
-            ..default()
-        },
-        TextColor(Color::srgb(0.5, 0.9, 0.5)),
-        Node {
-            position_type: PositionType::Absolute,
-            top: Val::Px(44.0),
-            right: Val::Px(10.0),
-            ..default()
-        },
-    ));
-
-    // HUD — clipped ball counter (top-right, below balls/tick)
-    commands.spawn((
-        Name::new("Clipped Ball Counter"),
-        ClippedBallCounterText,
-        Text::new("Clipped balls: 0"),
-        TextFont {
-            font_size: 24.0,
-            ..default()
-        },
-        TextColor(Color::srgb(0.9, 0.5, 0.2)),
-        Node {
-            position_type: PositionType::Absolute,
-            top: Val::Px(78.0),
-            right: Val::Px(10.0),
-            ..default()
-        },
-    ));
-
-    // HUD — mode label (top-center).
+    // HUD root — full-screen flex container; all HUD elements are children.
     commands
         .spawn((
-            Name::new("Mode Container"),
+            Name::new("HUD Root"),
             Node {
                 width: Val::Percent(100.0),
-                position_type: PositionType::Absolute,
-                top: Val::Px(10.0),
-                justify_content: JustifyContent::Center,
+                height: Val::Percent(100.0),
+                flex_direction: FlexDirection::Column,
+                justify_content: JustifyContent::SpaceBetween,
+                padding: UiRect::all(Val::Px(10.0)),
                 ..default()
             },
         ))
-        .with_children(|parent| {
-            parent.spawn((
-                Name::new("Mode Label"),
-                ModeText,
-                Text::new("Avian 2D"),
-                TextFont {
-                    font_size: 24.0,
+        .with_children(|root| {
+            // Top row: FPS (left) | Mode label (center) | Ball counters (right)
+            root.spawn((
+                Name::new("HUD Top Row"),
+                Node {
+                    width: Val::Percent(100.0),
+                    flex_direction: FlexDirection::Row,
+                    justify_content: JustifyContent::SpaceBetween,
+                    align_items: AlignItems::FlexStart,
                     ..default()
                 },
-                TextColor(Color::srgb(0.8, 0.8, 0.2)),
-            ));
-        });
+            ))
+            .with_children(|top| {
+                // Left: FPS / perf stats
+                top.spawn((
+                    Name::new("FPS Display"),
+                    FpsDisplayText,
+                    Text::new(""),
+                    TextFont {
+                        font_size: 20.0,
+                        ..default()
+                    },
+                    TextColor(Color::WHITE),
+                ));
 
-    // HUD — button instructions (bottom-center)
-    commands
-        .spawn((
-            Name::new("Button Instructions Container"),
-            Node {
-                width: Val::Percent(100.0),
-                position_type: PositionType::Absolute,
-                bottom: Val::Px(10.0),
-                justify_content: JustifyContent::Center,
-                ..default()
-            },
-        ))
-        .with_children(|parent| {
-            parent.spawn((
-                Name::new("Button Instructions"),
-                Text::new("Next mode: Enter  |  Pause: Space  |  Balls/tick: Up/Down"),
-                TextFont {
-                    font_size: 20.0,
+                // Center: mode label
+                top.spawn((
+                    Name::new("Mode Container"),
+                    Node {
+                        flex_grow: 1.0,
+                        justify_content: JustifyContent::Center,
+                        ..default()
+                    },
+                ))
+                .with_children(|center| {
+                    center.spawn((
+                        Name::new("Mode Label"),
+                        ModeText,
+                        Text::new("Avian 2D"),
+                        TextFont {
+                            font_size: 24.0,
+                            ..default()
+                        },
+                        TextColor(Color::srgb(0.8, 0.8, 0.2)),
+                    ));
+                });
+
+                // Right: ball counter column
+                top.spawn((
+                    Name::new("Ball Info Column"),
+                    Node {
+                        flex_direction: FlexDirection::Column,
+                        align_items: AlignItems::FlexEnd,
+                        ..default()
+                    },
+                ))
+                .with_children(|right| {
+                    right.spawn((
+                        Name::new("Ball Counter"),
+                        BallCounterText,
+                        Text::new("Balls: 0"),
+                        TextFont {
+                            font_size: 20.0,
+                            ..default()
+                        },
+                        TextColor(Color::WHITE),
+                    ));
+                    right.spawn((
+                        Name::new("Balls Per Tick Display"),
+                        BallsPerTickText,
+                        Text::new("Balls/tick: 1"),
+                        TextFont {
+                            font_size: 20.0,
+                            ..default()
+                        },
+                        TextColor(Color::srgb(0.5, 0.9, 0.5)),
+                    ));
+                    right.spawn((
+                        Name::new("Clipped Ball Counter"),
+                        ClippedBallCounterText,
+                        Text::new("Clipped balls: 0"),
+                        TextFont {
+                            font_size: 20.0,
+                            ..default()
+                        },
+                        TextColor(Color::srgb(0.9, 0.5, 0.2)),
+                    ));
+                });
+            });
+
+            // Bottom row: button instructions (center)
+            root.spawn((
+                Name::new("Button Instructions Container"),
+                Node {
+                    width: Val::Percent(100.0),
+                    justify_content: JustifyContent::Center,
                     ..default()
                 },
-                TextColor(Color::srgb(0.7, 0.7, 0.7)),
-            ));
+            ))
+            .with_children(|bottom| {
+                bottom.spawn((
+                    Name::new("Button Instructions"),
+                    Text::new(
+                        "Next mode: Enter  |  Pause: Space  |  Balls/tick: Up/Down",
+                    ),
+                    TextFont {
+                        font_size: 20.0,
+                        ..default()
+                    },
+                    TextColor(Color::srgb(0.7, 0.7, 0.7)),
+                ));
+            });
         });
 }
 
@@ -296,7 +302,15 @@ fn enter_2d_camera(
     for e in &camera_3d {
         commands.entity(e).despawn();
     }
-    commands.spawn((Name::new("Camera"), Camera2d, IsDefaultUiCamera));
+    commands.spawn((
+        Name::new("Camera"),
+        Camera2d,
+        IsDefaultUiCamera,
+        Projection::Orthographic(OrthographicProjection {
+            scale: 2.0,
+            ..OrthographicProjection::default_2d()
+        }),
+    ));
 }
 
 fn enter_3d_camera(
@@ -316,7 +330,7 @@ fn enter_3d_camera(
         Name::new("Camera"),
         Camera3d::default(),
         IsDefaultUiCamera,
-        Transform::from_xyz(0.0, 1400.0, 1600.0).looking_at(Vec3::new(0.0, -200.0, 0.0), Vec3::Y),
+        Transform::from_xyz(0.0, 3000.0, 3200.0).looking_at(Vec3::new(0.0, -200.0, 0.0), Vec3::Y),
     ));
 
     // Point light positioned above the pool center.
