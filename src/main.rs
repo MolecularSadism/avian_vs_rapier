@@ -23,9 +23,9 @@ fn main() -> AppExit {
                 primary_window: Window {
                     title: "Avian vs Rapier".to_string(),
                     #[cfg(feature = "legacy_state_scoped")]
-                    resolution: WindowResolution::new(1920.0_f32, 1080.0_f32),
+                    resolution: WindowResolution::new(960.0_f32, 540.0_f32),
                     #[cfg(not(feature = "legacy_state_scoped"))]
-                    resolution: WindowResolution::new(1920_u32, 1080_u32),
+                    resolution: WindowResolution::new(960_u32, 540_u32),
                     ..default()
                 }
                 .into(),
@@ -296,7 +296,15 @@ fn enter_2d_camera(
     for e in &camera_3d {
         commands.entity(e).despawn();
     }
-    commands.spawn((Name::new("Camera"), Camera2d, IsDefaultUiCamera));
+    commands.spawn((
+        Name::new("Camera"),
+        Camera2d,
+        IsDefaultUiCamera,
+        Projection::Orthographic(OrthographicProjection {
+            scale: 2.0,
+            ..OrthographicProjection::default_2d()
+        }),
+    ));
 }
 
 fn enter_3d_camera(
@@ -316,7 +324,7 @@ fn enter_3d_camera(
         Name::new("Camera"),
         Camera3d::default(),
         IsDefaultUiCamera,
-        Transform::from_xyz(0.0, 1400.0, 1600.0).looking_at(Vec3::new(0.0, -200.0, 0.0), Vec3::Y),
+        Transform::from_xyz(0.0, 3000.0, 3200.0).looking_at(Vec3::new(0.0, -200.0, 0.0), Vec3::Y),
     ));
 
     // Point light positioned above the pool center.
