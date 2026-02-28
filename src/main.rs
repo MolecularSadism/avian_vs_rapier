@@ -16,6 +16,33 @@ use std::time::Duration;
 use crate::backend::PhysicsMode;
 use crate::spawner::{Ball, BallCount, BallsPerTick};
 
+// ── Auto-zoom constants ────────────────────────────────────────────────────────
+
+/// Physics pool dimensions in world units (must match walls.rs WIDTH / HEIGHT).
+const POOL_W: f32 = 1920.0;
+const POOL_H: f32 = 1080.0;
+
+/// 3D camera look-at target (world space).
+const CAM3D_LOOK_AT: Vec3 = Vec3::new(0.0, -200.0, 0.0);
+
+/// Offset from the look-at point to the reference camera position.
+/// Reference position is (0, 3000, 3200), designed for a 960 × 540 window.
+const CAM3D_REF_OFFSET: Vec3 = Vec3::new(0.0, 3200.0, 3200.0);
+const CAM3D_REF_W: f32 = 960.0;
+const CAM3D_REF_H: f32 = 540.0;
+
+/// Smallest orthographic scale that fits the full pool into a window of `width × height`.
+fn ortho_scale_for_window(width: f32, height: f32) -> f32 {
+    (POOL_W / width).max(POOL_H / height)
+}
+
+/// 3D camera world position that fits the full pool into a window of `width × height`.
+/// Scales the camera's distance from the look-at point, keeping the view direction fixed.
+fn cam3d_pos_for_window(width: f32, height: f32) -> Vec3 {
+    let scale = (CAM3D_REF_W / width).max(CAM3D_REF_H / height);
+    CAM3D_LOOK_AT + CAM3D_REF_OFFSET * scale
+}
+
 fn main() -> AppExit {
     App::new()
         .add_plugins(
@@ -100,6 +127,7 @@ fn main() -> AppExit {
                 toggle_pause,
                 handle_mode_switch,
                 handle_balls_per_tick,
+                fit_camera_to_pool,
             ),
         )
         .run()
@@ -295,6 +323,7 @@ fn enter_2d_camera(
     mut commands: Commands,
     camera_2d: Query<Entity, With<Camera2d>>,
     camera_3d: Query<Entity, With<Camera3d>>,
+    windows: Query<&Window>,
 ) {
     if !camera_2d.is_empty() {
         return;
@@ -302,12 +331,16 @@ fn enter_2d_camera(
     for e in &camera_3d {
         commands.entity(e).despawn();
     }
+    let scale = windows
+        .get_single()
+        .map(|w| ortho_scale_for_window(w.width(), w.height()))
+        .unwrap_or(2.0);
     commands.spawn((
         Name::new("Camera"),
         Camera2d,
         IsDefaultUiCamera,
         Projection::Orthographic(OrthographicProjection {
-            scale: 2.0,
+            scale,
             ..OrthographicProjection::default_2d()
         }),
     ));
@@ -317,6 +350,7 @@ fn enter_3d_camera(
     mut commands: Commands,
     camera_2d: Query<Entity, With<Camera2d>>,
     camera_3d: Query<Entity, With<Camera3d>>,
+    windows: Query<&Window>,
 ) {
     if !camera_3d.is_empty() {
         return;
@@ -325,12 +359,16 @@ fn enter_3d_camera(
         commands.entity(e).despawn();
     }
     // Position above and in front of the pool, angled down to show all four
-    // walls, the floor, and the open top.
+    // walls, the floor, and the open top. Zoom is adjusted for the current window.
+    let cam_pos = windows
+        .get_single()
+        .map(|w| cam3d_pos_for_window(w.width(), w.height()))
+        .unwrap_or(CAM3D_LOOK_AT + CAM3D_REF_OFFSET);
     commands.spawn((
         Name::new("Camera"),
         Camera3d::default(),
         IsDefaultUiCamera,
-        Transform::from_xyz(0.0, 3000.0, 3200.0).looking_at(Vec3::new(0.0, -200.0, 0.0), Vec3::Y),
+        Transform::from_translation(cam_pos).looking_at(CAM3D_LOOK_AT, Vec3::Y),
     ));
 
     // Point light positioned above the pool center.
@@ -391,6 +429,33 @@ fn update_mode_text(state: Res<State<PhysicsMode>>, mut query: Query<&mut Text, 
 }
 
 // ── Update systems ────────────────────────────────────────────────────────────
+
+/// Listens for window resize events and adjusts camera zoom / position so the
+/// whole physics pool always fits inside the window without being clipped.
+///
+/// - 2D camera: updates the orthographic projection scale.
+/// - 3D camera: scales its distance from the look-at point along the fixed
+///   view direction, which is equivalent to perspective zoom.
+fn fit_camera_to_pool(
+    mut resize_events: EventReader<WindowResized>,
+    mut cam2d: Query<&mut Projection, With<Camera2d>>,
+    mut cam3d: Query<&mut Transform, With<Camera3d>>,
+) {
+    let Some(event) = resize_events.read().last() else {
+        return;
+    };
+    let (w, h) = (event.width, event.height);
+
+    for mut proj in &mut cam2d {
+        if let Projection::Orthographic(ref mut ortho) = *proj {
+            ortho.scale = ortho_scale_for_window(w, h);
+        }
+    }
+
+    for mut transform in &mut cam3d {
+        transform.translation = cam3d_pos_for_window(w, h);
+    }
+}
 
 fn toggle_pause(keys: Res<ButtonInput<KeyCode>>, mut time: ResMut<Time<Virtual>>) {
     if keys.just_pressed(KeyCode::Space) {
