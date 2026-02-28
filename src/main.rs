@@ -168,6 +168,7 @@ fn setup(mut commands: Commands, mut time: ResMut<Time<Virtual>>) {
                 top.spawn((
                     Name::new("FPS Display"),
                     FpsDisplayText,
+                    Node::default(),
                     Text::new(""),
                     TextFont {
                         font_size: 20.0,
@@ -189,6 +190,7 @@ fn setup(mut commands: Commands, mut time: ResMut<Time<Virtual>>) {
                     center.spawn((
                         Name::new("Mode Label"),
                         ModeText,
+                        Node::default(),
                         Text::new("Avian 2D"),
                         TextFont {
                             font_size: 24.0,
@@ -211,6 +213,7 @@ fn setup(mut commands: Commands, mut time: ResMut<Time<Virtual>>) {
                     right.spawn((
                         Name::new("Ball Counter"),
                         BallCounterText,
+                        Node::default(),
                         Text::new("Balls: 0"),
                         TextFont {
                             font_size: 20.0,
@@ -221,6 +224,7 @@ fn setup(mut commands: Commands, mut time: ResMut<Time<Virtual>>) {
                     right.spawn((
                         Name::new("Balls Per Tick Display"),
                         BallsPerTickText,
+                        Node::default(),
                         Text::new("Balls/tick: 1"),
                         TextFont {
                             font_size: 20.0,
@@ -231,6 +235,7 @@ fn setup(mut commands: Commands, mut time: ResMut<Time<Virtual>>) {
                     right.spawn((
                         Name::new("Clipped Ball Counter"),
                         ClippedBallCounterText,
+                        Node::default(),
                         Text::new("Clipped balls: 0"),
                         TextFont {
                             font_size: 20.0,
@@ -253,6 +258,7 @@ fn setup(mut commands: Commands, mut time: ResMut<Time<Virtual>>) {
             .with_children(|bottom| {
                 bottom.spawn((
                     Name::new("Button Instructions"),
+                    Node::default(),
                     Text::new(
                         "Next mode: Enter  |  Pause: Space  |  Balls/tick: Up/Down",
                     ),
