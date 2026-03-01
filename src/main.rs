@@ -8,7 +8,7 @@ mod walls;
 use bevy::{
     diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin},
     prelude::*,
-    window::WindowResolution,
+    window::{PrimaryWindow, WindowResolution},
 };
 
 use std::time::Duration;
@@ -338,8 +338,8 @@ fn enter_2d_camera(
         commands.entity(e).despawn();
     }
     let scale = windows
-        .get_single()
-        .map(|w| ortho_scale_for_window(w.width(), w.height()))
+        .single()
+        .map(|w: &Window| ortho_scale_for_window(w.width(), w.height()))
         .unwrap_or(2.0);
     commands.spawn((
         Name::new("Camera"),
@@ -367,8 +367,8 @@ fn enter_3d_camera(
     // Position above and in front of the pool, angled down to show all four
     // walls, the floor, and the open top. Zoom is adjusted for the current window.
     let cam_pos = windows
-        .get_single()
-        .map(|w| cam3d_pos_for_window(w.width(), w.height()))
+        .single()
+        .map(|w: &Window| cam3d_pos_for_window(w.width(), w.height()))
         .unwrap_or(CAM3D_LOOK_AT + CAM3D_REF_OFFSET);
     commands.spawn((
         Name::new("Camera"),
@@ -436,21 +436,25 @@ fn update_mode_text(state: Res<State<PhysicsMode>>, mut query: Query<&mut Text, 
 
 // ── Update systems ────────────────────────────────────────────────────────────
 
-/// Listens for window resize events and adjusts camera zoom / position so the
+/// Adjusts camera zoom / position whenever the primary window is resized so the
 /// whole physics pool always fits inside the window without being clipped.
+///
+/// Uses `Changed<Window>` rather than `WindowResized` events so it works both
+/// in real windowed builds (where WinitPlugin mutates the component on resize)
+/// and in headless tests (where `Window` can be mutated directly).
 ///
 /// - 2D camera: updates the orthographic projection scale.
 /// - 3D camera: scales its distance from the look-at point along the fixed
 ///   view direction, which is equivalent to perspective zoom.
 fn fit_camera_to_pool(
-    mut resize_events: EventReader<WindowResized>,
+    windows: Query<&Window, (With<PrimaryWindow>, Changed<Window>)>,
     mut cam2d: Query<&mut Projection, With<Camera2d>>,
     mut cam3d: Query<&mut Transform, With<Camera3d>>,
 ) {
-    let Some(event) = resize_events.read().last() else {
-        return;
+    let Ok(window) = windows.single() else {
+        return; // no change this frame
     };
-    let (w, h) = (event.width, event.height);
+    let (w, h) = (window.width(), window.height());
 
     for mut proj in &mut cam2d {
         if let Projection::Orthographic(ref mut ortho) = *proj {
@@ -617,4 +621,229 @@ fn handle_mode_switch(
     }
 
     next_state.set(new_mode);
+}
+
+// ── Tests ─────────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bevy::window::PrimaryWindow;
+
+    // ── Unit tests: pure zoom helpers ──────────────────────────────────────────
+
+    #[test]
+    fn ortho_scale_at_reference_window() {
+        // 960×540 is the designed window; pool is 1920×1080 = 2×, so scale = 2.
+        assert_eq!(ortho_scale_for_window(960.0, 540.0), 2.0);
+    }
+
+    #[test]
+    fn ortho_scale_at_pool_size() {
+        // Pool exactly fills the window → scale = 1.
+        assert_eq!(ortho_scale_for_window(1920.0, 1080.0), 1.0);
+    }
+
+    #[test]
+    fn ortho_scale_width_constrained() {
+        // 480×540: width is the bottleneck → 1920/480 = 4.
+        assert_eq!(ortho_scale_for_window(480.0, 540.0), 4.0);
+    }
+
+    #[test]
+    fn ortho_scale_height_constrained() {
+        // 960×270: height is the bottleneck → 1080/270 = 4.
+        assert_eq!(ortho_scale_for_window(960.0, 270.0), 4.0);
+    }
+
+    #[test]
+    fn ortho_scale_wide_window_uses_height() {
+        // 1920×540: width fits at scale 1, height needs scale 2 → 2.
+        assert_eq!(ortho_scale_for_window(1920.0, 540.0), 2.0);
+    }
+
+    #[test]
+    fn ortho_scale_large_window_zooms_in() {
+        // Larger window → smaller scale (camera zooms in).
+        assert!(ortho_scale_for_window(1920.0, 1080.0) < ortho_scale_for_window(960.0, 540.0));
+    }
+
+    #[test]
+    fn cam3d_at_reference_window_is_default_position() {
+        let pos = cam3d_pos_for_window(960.0, 540.0);
+        assert_eq!(pos, Vec3::new(0.0, 3000.0, 3200.0));
+    }
+
+    #[test]
+    fn cam3d_smaller_window_moves_camera_farther() {
+        let ref_pos = cam3d_pos_for_window(960.0, 540.0);
+        let small_pos = cam3d_pos_for_window(480.0, 270.0);
+        let ref_dist = (ref_pos - CAM3D_LOOK_AT).length();
+        let small_dist = (small_pos - CAM3D_LOOK_AT).length();
+        assert!(small_dist > ref_dist, "smaller window must push camera farther out");
+    }
+
+    #[test]
+    fn cam3d_direction_unchanged_on_resize() {
+        let ref_pos = cam3d_pos_for_window(960.0, 540.0);
+        let small_pos = cam3d_pos_for_window(480.0, 270.0);
+        let ref_dir = (ref_pos - CAM3D_LOOK_AT).normalize();
+        let small_dir = (small_pos - CAM3D_LOOK_AT).normalize();
+        // Directions should be identical (only distance changes).
+        assert!(ref_dir.distance(small_dir) < 1e-5);
+    }
+
+    // ── Integration tests: fit_camera_to_pool system ───────────────────────────
+
+    fn make_test_app() -> App {
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins);
+        app.add_systems(Update, fit_camera_to_pool);
+        app
+    }
+
+    fn spawn_primary_window(app: &mut App, w: u32, h: u32) -> Entity {
+        app.world_mut()
+            .spawn((
+                Window {
+                    resolution: WindowResolution::new(w, h),
+                    ..default()
+                },
+                PrimaryWindow,
+            ))
+            .id()
+    }
+
+    #[test]
+    fn fit_2d_camera_on_initial_window_spawn() {
+        let mut app = make_test_app();
+        spawn_primary_window(&mut app, 960, 540);
+        app.world_mut().spawn((
+            Camera2d,
+            Projection::Orthographic(OrthographicProjection {
+                scale: 99.0, // deliberately wrong
+                ..OrthographicProjection::default_2d()
+            }),
+        ));
+
+        // First update: Window was just added (counts as Changed) → system corrects scale.
+        app.update();
+
+        let mut q = app
+            .world_mut()
+            .query_filtered::<&Projection, With<Camera2d>>();
+        let proj = q.single(app.world()).unwrap();
+        let Projection::Orthographic(ortho) = proj else {
+            panic!("expected orthographic projection");
+        };
+        assert_eq!(
+            ortho.scale,
+            ortho_scale_for_window(960.0, 540.0),
+            "scale should match 960×540 window after first update"
+        );
+    }
+
+    #[test]
+    fn fit_2d_camera_on_window_resize() {
+        let mut app = make_test_app();
+        let win = spawn_primary_window(&mut app, 960, 540);
+        app.world_mut().spawn((
+            Camera2d,
+            Projection::Orthographic(OrthographicProjection {
+                scale: 2.0,
+                ..OrthographicProjection::default_2d()
+            }),
+        ));
+        app.update(); // consume initial Changed
+
+        // Resize to half width.
+        app.world_mut()
+            .entity_mut(win)
+            .get_mut::<Window>()
+            .unwrap()
+            .resolution = WindowResolution::new(480_u32, 540_u32);
+
+        app.update();
+
+        let mut q = app
+            .world_mut()
+            .query_filtered::<&Projection, With<Camera2d>>();
+        let proj = q.single(app.world()).unwrap();
+        let Projection::Orthographic(ortho) = proj else {
+            panic!("expected orthographic projection");
+        };
+        assert_eq!(
+            ortho.scale,
+            ortho_scale_for_window(480.0, 540.0),
+            "scale must update to fit narrower window"
+        );
+    }
+
+    #[test]
+    fn fit_2d_camera_no_update_without_resize() {
+        let mut app = make_test_app();
+        spawn_primary_window(&mut app, 960, 540);
+        app.world_mut().spawn((
+            Camera2d,
+            Projection::Orthographic(OrthographicProjection {
+                scale: 2.0,
+                ..OrthographicProjection::default_2d()
+            }),
+        ));
+        app.update(); // consume initial Changed
+
+        // No mutation to Window → system must not change the scale.
+        // Manually set scale to a sentinel value to detect any unwanted write.
+        {
+            let mut q = app
+                .world_mut()
+                .query_filtered::<&mut Projection, With<Camera2d>>();
+            let mut proj = q.single_mut(app.world_mut()).unwrap();
+            let Projection::Orthographic(ref mut ortho) = *proj else {
+                panic!();
+            };
+            ortho.scale = 77.0;
+        }
+
+        app.update(); // no window change → system is a no-op
+
+        let mut q = app
+            .world_mut()
+            .query_filtered::<&Projection, With<Camera2d>>();
+        let proj = q.single(app.world()).unwrap();
+        let Projection::Orthographic(ortho) = proj else {
+            panic!();
+        };
+        assert_eq!(ortho.scale, 77.0, "scale must not change when window is unchanged");
+    }
+
+    #[test]
+    fn fit_3d_camera_on_window_resize() {
+        let mut app = make_test_app();
+        let win = spawn_primary_window(&mut app, 960, 540);
+        app.world_mut().spawn((
+            Camera3d::default(),
+            Transform::from_translation(cam3d_pos_for_window(960.0, 540.0))
+                .looking_at(CAM3D_LOOK_AT, Vec3::Y),
+        ));
+        app.update(); // consume initial Changed
+
+        app.world_mut()
+            .entity_mut(win)
+            .get_mut::<Window>()
+            .unwrap()
+            .resolution = WindowResolution::new(480_u32, 540_u32);
+
+        app.update();
+
+        let mut q = app
+            .world_mut()
+            .query_filtered::<&Transform, With<Camera3d>>();
+        let tf = q.single(app.world()).unwrap();
+        assert_eq!(
+            tf.translation,
+            cam3d_pos_for_window(480.0, 540.0),
+            "3D camera position must update to fit narrower window"
+        );
+    }
 }
