@@ -42,6 +42,9 @@ default = ["simd"]
 # Only needed for Bevy 0.16 (which used StateScoped instead of DespawnOnExit).
 legacy_state_scoped = []
 
+fair_fixed = []
+fair_variable = []
+
 parallel = [
     "avian2d/parallel",
     "avian3d/parallel",

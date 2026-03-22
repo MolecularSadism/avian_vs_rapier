@@ -10,6 +10,9 @@
 //! - Avian `circle(r)` / `sphere(r)` vs Rapier `ball(r)`.
 //! - Avian `RigidBody::Static` vs Rapier `RigidBody::Fixed`.
 
+#[cfg(all(feature = "fair_fixed", feature = "fair_variable"))]
+compile_error!("features `fair_fixed` and `fair_variable` are mutually exclusive");
+
 use bevy::prelude::*;
 
 // Bevy 0.16 called this `StateScoped`; 0.17+ renamed it to `DespawnOnExit`.
@@ -71,23 +74,56 @@ pub fn plugin(app: &mut App) {
     app.enable_state_scoped_entities::<PhysicsMode>();
 
     // Register all four physics plugins — idle ones just have no entities to process.
-    app.add_plugins(avian2d::PhysicsPlugins::default().with_length_unit(LENGTH_UNIT));
-    // Disable PhysicsInterpolationPlugin on avian3d to avoid a duplicate-plugin panic:
-    // both avian2d and avian3d unconditionally add TransformInterpolationPlugin through it.
-    app.add_plugins(
-        avian3d::PhysicsPlugins::default()
-            .with_length_unit(LENGTH_UNIT)
-            .build()
-            .disable::<avian3d::interpolation::PhysicsInterpolationPlugin>(),
-    );
-    app.add_plugins(
-        bevy_rapier2d::plugin::RapierPhysicsPlugin::<bevy_rapier2d::plugin::NoUserData>::default()
-            .with_length_unit(LENGTH_UNIT),
-    );
-    app.add_plugins(
-        bevy_rapier3d::plugin::RapierPhysicsPlugin::<bevy_rapier3d::plugin::NoUserData>::default()
-            .with_length_unit(LENGTH_UNIT),
-    );
+    //
+    // fair_variable: run Avian in PostUpdate (like Rapier's default) instead of FixedPostUpdate.
+    // fair_fixed / default: Avian uses its default FixedPostUpdate schedule.
+    #[cfg(feature = "fair_variable")]
+    {
+        app.add_plugins(avian2d::PhysicsPlugins::new(PostUpdate).with_length_unit(LENGTH_UNIT));
+        app.add_plugins(
+            avian3d::PhysicsPlugins::new(PostUpdate)
+                .with_length_unit(LENGTH_UNIT)
+                .build()
+                .disable::<avian3d::interpolation::PhysicsInterpolationPlugin>(),
+        );
+    }
+    #[cfg(not(feature = "fair_variable"))]
+    {
+        app.add_plugins(avian2d::PhysicsPlugins::default().with_length_unit(LENGTH_UNIT));
+        app.add_plugins(
+            avian3d::PhysicsPlugins::default()
+                .with_length_unit(LENGTH_UNIT)
+                .build()
+                .disable::<avian3d::interpolation::PhysicsInterpolationPlugin>(),
+        );
+    }
+
+    // fair_fixed: run Rapier in FixedUpdate (like Avian's default) instead of PostUpdate.
+    // fair_variable / default: Rapier uses its default PostUpdate schedule.
+    #[cfg(feature = "fair_fixed")]
+    {
+        app.add_plugins(
+            bevy_rapier2d::plugin::RapierPhysicsPlugin::<bevy_rapier2d::plugin::NoUserData>::default()
+                .with_length_unit(LENGTH_UNIT)
+                .in_fixed_schedule(),
+        );
+        app.add_plugins(
+            bevy_rapier3d::plugin::RapierPhysicsPlugin::<bevy_rapier3d::plugin::NoUserData>::default()
+                .with_length_unit(LENGTH_UNIT)
+                .in_fixed_schedule(),
+        );
+    }
+    #[cfg(not(feature = "fair_fixed"))]
+    {
+        app.add_plugins(
+            bevy_rapier2d::plugin::RapierPhysicsPlugin::<bevy_rapier2d::plugin::NoUserData>::default()
+                .with_length_unit(LENGTH_UNIT),
+        );
+        app.add_plugins(
+            bevy_rapier3d::plugin::RapierPhysicsPlugin::<bevy_rapier3d::plugin::NoUserData>::default()
+                .with_length_unit(LENGTH_UNIT),
+        );
+    }
 
     // Avian gravity is in m/s²; Vec2/Vec3 NEG_Y * 9.81.
     app.insert_resource(avian2d::prelude::Gravity(Vec2::NEG_Y * GRAVITY));
@@ -98,6 +134,26 @@ pub fn plugin(app: &mut App) {
     // RapierConfiguration is a Component (not a Resource) in newer bevy_rapier,
     // so we patch it via startup systems after the plugin inserts it.
     app.add_systems(Startup, (set_rapier2d_gravity, set_rapier3d_gravity));
+
+    // fair_fixed: match Avian's defaults — fixed 64Hz with 6 substeps for Rapier.
+    #[cfg(feature = "fair_fixed")]
+    {
+        app.insert_resource(bevy_rapier2d::plugin::TimestepMode::Fixed {
+            dt: 1.0 / 64.0,
+            substeps: 6,
+        });
+        app.insert_resource(bevy_rapier3d::plugin::TimestepMode::Fixed {
+            dt: 1.0 / 64.0,
+            substeps: 6,
+        });
+    }
+
+    // fair_variable: match Rapier's defaults — 1 substep for Avian.
+    #[cfg(feature = "fair_variable")]
+    {
+        app.insert_resource(avian2d::dynamics::solver::schedule::SubstepCount(1));
+        app.insert_resource(avian3d::dynamics::solver::schedule::SubstepCount(1));
+    }
 }
 
 fn set_rapier2d_gravity(mut rapier_config: Query<&mut bevy_rapier2d::plugin::RapierConfiguration>) {

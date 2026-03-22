@@ -43,6 +43,16 @@ fn cam3d_pos_for_window(width: f32, height: f32) -> Vec3 {
     CAM3D_LOOK_AT + CAM3D_REF_OFFSET * scale
 }
 
+fn timestep_label() -> &'static str {
+    if cfg!(feature = "fair_fixed") {
+        "Timestep: Fixed (fair)"
+    } else if cfg!(feature = "fair_variable") {
+        "Timestep: Variable (fair)"
+    } else {
+        "Timestep: Engine defaults"
+    }
+}
+
 fn main() -> AppExit {
     App::new()
         .add_plugins(
@@ -177,11 +187,13 @@ fn setup(mut commands: Commands, mut time: ResMut<Time<Virtual>>) {
                     TextColor(Color::WHITE),
                 ));
 
-                // Center: mode label
+                // Center: mode label + timestep config
                 top.spawn((
                     Name::new("Mode Container"),
                     Node {
                         flex_grow: 1.0,
+                        flex_direction: FlexDirection::Column,
+                        align_items: AlignItems::Center,
                         justify_content: JustifyContent::Center,
                         ..default()
                     },
@@ -197,6 +209,16 @@ fn setup(mut commands: Commands, mut time: ResMut<Time<Virtual>>) {
                             ..default()
                         },
                         TextColor(Color::srgb(0.8, 0.8, 0.2)),
+                    ));
+                    center.spawn((
+                        Name::new("Timestep Label"),
+                        Node::default(),
+                        Text::new(timestep_label()),
+                        TextFont {
+                            font_size: 18.0,
+                            ..default()
+                        },
+                        TextColor(Color::srgb(0.6, 0.8, 0.9)),
                     ));
                 });
 
