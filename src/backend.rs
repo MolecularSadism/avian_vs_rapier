@@ -14,6 +14,10 @@
 compile_error!("features `fair_fixed` and `fair_variable` are mutually exclusive");
 
 use bevy::prelude::*;
+#[cfg(feature = "fair_variable")]
+use avian2d::prelude::PhysicsTime as _;
+#[cfg(feature = "fair_variable")]
+use avian3d::prelude::PhysicsTime as _;
 
 // Bevy 0.16 called this `StateScoped`; 0.17+ renamed it to `DespawnOnExit`.
 // Cargo16.toml enables `legacy_state_scoped` by default to activate this shim.
@@ -154,6 +158,39 @@ pub fn plugin(app: &mut App) {
         app.insert_resource(avian2d::dynamics::solver::schedule::SubstepCount(1));
         app.insert_resource(avian3d::dynamics::solver::schedule::SubstepCount(1));
     }
+
+    // fair_variable: clamp Avian's physics dt to match Rapier's default max_dt of 1/60s.
+    // Rapier's TimestepMode::Variable uses min(max_dt, delta * time_scale) with max_dt = 1/60.
+    // Avian has no built-in max_dt, so we dynamically adjust relative_speed before each step.
+    #[cfg(feature = "fair_variable")]
+    {
+        app.add_systems(
+            PostUpdate,
+            clamp_avian_physics_dt
+                .before(avian2d::prelude::PhysicsSystems::StepSimulation)
+                .before(avian3d::prelude::PhysicsSystems::StepSimulation),
+        );
+    }
+}
+
+/// Rapier's default `TimestepMode::Variable` clamps physics dt to `max_dt` (1/60s).
+/// Avian has no equivalent, so we adjust `relative_speed` each frame to cap the
+/// effective timestep at the same 1/60s maximum.
+#[cfg(feature = "fair_variable")]
+fn clamp_avian_physics_dt(
+    time: Res<Time>,
+    mut physics_time_2d: ResMut<Time<avian2d::prelude::Physics>>,
+    mut physics_time_3d: ResMut<Time<avian3d::prelude::Physics>>,
+) {
+    const MAX_DT: f32 = 1.0 / 60.0;
+    let dt = time.delta_secs();
+    let speed = if dt > MAX_DT && dt > 0.0 {
+        MAX_DT / dt
+    } else {
+        1.0
+    };
+    physics_time_2d.set_relative_speed(speed);
+    physics_time_3d.set_relative_speed(speed);
 }
 
 fn set_rapier2d_gravity(mut rapier_config: Query<&mut bevy_rapier2d::plugin::RapierConfiguration>) {
