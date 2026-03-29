@@ -38,7 +38,7 @@ dependency versions in `Cargo.toml` according to this table:
 
 | Bevy | avian2d/3d | bevy_rapier2d/3d | Manifest | Extra features |
 |------|-----------|------------------|----------|----------------|
-| 0.18 | 0.6       | 0.33 | `Cargo.toml` (default) | — |
+| 0.18 | 0.6       | 0.33 | `Cargo.toml` (default) |  `fair_fixed` (Avian defaults), `fair_variable` (Rapier defaults) |
 | 0.17 | 0.4       | 0.32 | `bevy17/Cargo.toml` | — |
 | 0.16 | 0.3       | 0.30 | `bevy16/Cargo.toml` | `legacy_state_scoped` (on by default in that manifest) |
 
